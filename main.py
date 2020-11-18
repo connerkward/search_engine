@@ -19,15 +19,18 @@ INDEX_CHUNK_SIZE = 200
 INVERT_BUCKET_SIZE = 1000
 SEARCH_RESULTS = 5
 
-TFIDF = False
+# STAGE OPTIONS
 REPORT = False
 
 INDEX_TO_FILE = True
 INVERT_TO_FILE = True
 
-INDEX_EXISTS = False
+INDEX_EXISTS = True
+DOCSTORE_EXISTS = True
 INVERT_EXISTS = False
-DOCSTORE_EXISTS = False
+
+
+TFIDF = False
 
 # INSTANTIATION
 document_store = list()  # list of document urls. index number is doc id
@@ -54,6 +57,7 @@ if not INDEX_EXISTS:
                          abs_decrementer=abs_decrementer, INDEX_TO_FILE=INDEX_TO_FILE,
                          tokenizer=tokenizer, DATA_DIR=DATA_DIR, INVERT_EXPORT_DIR=INDEX_DIR,
                          INDEX_CHUNK_SIZE=INDEX_CHUNK_SIZE, abs_docs=abs_doc_count, )
+        wordcount_index.clear()
         INDEX_EXISTS = True
 
 # INVERT INDEX
@@ -66,6 +70,7 @@ if not INVERT_EXISTS and INDEX_EXISTS:
                                      INVERT_TO_FILE=INVERT_TO_FILE,
                                      tfidf=TFIDF
                                      )
+    inverted_index.clear()
 
 print("<------------LOADING INVERT----------------->")
 # load invert index
@@ -106,3 +111,4 @@ for search in searches:
     time_search_printed = time.perf_counter()
     print(f"Term '{search}' search took {time_search_printed - time_search_start} seconds total.")
 
+# deliverables top 5 results for each query and a photo of the cmd interface in action

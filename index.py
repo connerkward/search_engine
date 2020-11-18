@@ -135,14 +135,23 @@ def invert_index(inverted_index_ref, wordcount_index, tfidf=False):
     if tfidf:
         update_invert_with_tfidf(invert_ref=inverted_index_ref)
 
-
-def invert_index_from_file(wordcount_index_ref, inverted_index_ref, INDEX_DIR, tfidf=False):
+def invert_index_from_file(inverted_index_ref, INDEX_DIR, tfidf=False):
+    if load_bard:
+        load_bard.start("LOADING INDEX FILES", timer=LB_USE_TIMER, type=LB_DISPLAY_TYPE)
+    wordcount_index_ref = dict()
     for subdir, dirs, files in os.walk(INDEX_DIR):
+        files_read = 0
         for file in files:
             with open(INDEX_DIR + file) as f:
                 json_obj = json.load(f)
                 for docID in json_obj.keys():
                     wordcount_index_ref[docID] = json_obj[docID]
+                percent_progress = float("{:.2f}".format(files_read / len(files)))
+                if load_bard and percent_progress % 0.01 == 0:
+                    load_bard.update(f"{percent_progress * 100}%", replace=True)
+                files_read += 1
+    if load_bard:
+        load_bard.end()
     invert_index(inverted_index_ref, wordcount_index_ref, tfidf=tfidf)
 
 # INVERT INDEX TO FILE
@@ -152,10 +161,9 @@ def invert_from_to_file_simple(wordcount_index_ref, inverted_index_ref,
     #inverted index {word: {docID: {word count in document, bold_bool}}
 
     invert_index_from_file(
-        wordcount_index_ref= wordcount_index_ref,
         inverted_index_ref=inverted_index_ref,
         INDEX_DIR=INDEX_DIR,
-        tfidf=tfidf
+        tfidf=tfidf,
     )
 
     # how to bucket-ize inverted index
