@@ -67,7 +67,7 @@ def make_index(wordcount_index_ref, document_store, abs_decrementer, abs_docs, I
                     thing = float("{:.2f}".format((int(docID)/abs_docs)*100))
                     load_bard.update(f"bucket size: {len(wordcount_index_ref)}\t{thing}%\t{file}", replace=True)
     wordcount_index_ref.clear()
-    with open("document_look_up_table.json", "w") as f:
+    with open("INDEX2/document_look_up_table.json", "w") as f:
         json.dump(document_store, f, indent=TABS)
     if load_bard:
         load_bard.end()
@@ -138,6 +138,7 @@ def invert_index(inverted_index_ref, wordcount_index, tfidf=False):
 def invert_index_from_file(inverted_index_ref, INDEX_DIR, tfidf=False):
     if load_bard:
         load_bard.start("LOADING INDEX FILES", timer=LB_USE_TIMER, type=LB_DISPLAY_TYPE)
+    # Load entire wordcount index into memory
     wordcount_index_ref = dict()
     for subdir, dirs, files in os.walk(INDEX_DIR):
         files_read = 0
@@ -152,6 +153,7 @@ def invert_index_from_file(inverted_index_ref, INDEX_DIR, tfidf=False):
                 files_read += 1
     if load_bard:
         load_bard.end()
+    # invert in-memory index
     invert_index(inverted_index_ref, wordcount_index_ref, tfidf=tfidf)
 
 # INVERT INDEX TO FILE
@@ -165,7 +167,6 @@ def invert_from_to_file_simple(wordcount_index_ref, inverted_index_ref,
         INDEX_DIR=INDEX_DIR,
         tfidf=tfidf,
     )
-
     # how to bucket-ize inverted index
     if INVERT_TO_FILE:
         with open(INVERT_EXPORT_DIR + "invert" + ".json", 'w', encoding='utf-8') as f:
@@ -178,7 +179,7 @@ def load_invert(INVERT_DIR, inverted_index_ref):
 
 
 def load_doc_store():
-    with open("document_look_up_table.json", "r") as f:
+    with open("INDEX2/document_look_up_table.json", "r") as f:
         return list(json.load(f))
 
 def load_word_store():
