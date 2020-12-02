@@ -20,7 +20,7 @@ def bar(message):
 
 def percentage(message, replace=False):
     if replace:
-        sys.stdout.write(f'\b'*len(message))
+        sys.stdout.write(f'\b'*len(message)*10)
         sys.stdout.write(message)
         sys.stdout.flush()
     else:
@@ -49,7 +49,7 @@ class LoadBard:
 
 
     def end(self):
-        s = "\b"*len(self.mod_message)
+        s = "\b"*len(self.mod_message)*10
         if self.timer:
             sys.stdout.write(f'{s}{self.start_message} completed. '
                              f'Completed in {time.perf_counter()-self.time_start} seconds.')

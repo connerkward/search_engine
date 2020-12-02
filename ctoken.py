@@ -4,12 +4,13 @@ from nltk.stem import SnowballStemmer
 from nltk.corpus import stopwords
 
 # @ and $ are excluded from TABLE because they add important context to numbers and email addresses, respectively
-replace_string = "\n\t\r^_`{|}~?<=>*+#%!;:/[]\'\",()_”“‘’\\" #
+# replace_string = "\n\t\r^_`{|}~?<=>*+#%!;:/[]\'\",()_”“‘’\\"
+replace_string = "\n\t\r^_`{|}~?<=>*+#%!;:/[]\'\",()_”“‘’\\&$"
 TABLE2 = str.maketrans(replace_string, " "*len(replace_string))
 TABLE_NOSPACE = str.maketrans("", "", "-")
-#stemmer = PorterStemmer() # stemmer.stem()
 stemmer = SnowballStemmer("english")
 STOPWORDS = set(stopwords.words('english'))
+NO_NUMERIC = True
 
 def tokenize(line: str, trim_stopwords=False) -> list:
     tokenlist = list()
@@ -21,7 +22,10 @@ def tokenize(line: str, trim_stopwords=False) -> list:
             if trim_stopwords and word in STOPWORDS:
                 break
             if word != '':
-                tokenlist.append(stemmer.stem(word).encode("ascii").decode())
+                if NO_NUMERIC and any(map(str.isdigit, word)):
+                    pass
+                else:
+                    tokenlist.append(stemmer.stem(word).encode("ascii").decode())
         except UnicodeEncodeError:  # for handling bad characters in word
             pass
     return tokenlist
