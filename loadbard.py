@@ -18,7 +18,7 @@ def bar(message):
     sys.stdout.write(LOADBAR_CHAR)
     sys.stdout.flush()
 
-def percentage(message, replace=False):
+def percentage(message, replace=True):
     if replace:
         sys.stdout.write(f'\b'*len(message)*10)
         sys.stdout.write(message)

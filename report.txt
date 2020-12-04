@@ -1,0 +1,16 @@
+20 QUERIES
+TO TEST SEARCH/RANK SPEED AND "PERFORMANCE"
+1. MOSFET - does not appear in dataset
+2. is a common word in the dataset
+3. is a least common word in the dataset
+4. is a averagely common word in data set
+...
+
+POOREST PERFORMERS
+...
+HOW SPEED WAS INCREASED:
+...
+HOW SPEED WAS INCREASED:
+...
+HOW SPEED WAS INCREASED:
+...

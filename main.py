@@ -1,5 +1,4 @@
 import os
-# import json
 from bs4 import BeautifulSoup
 from collections import defaultdict
 import loadbard
@@ -12,33 +11,52 @@ import json
 import math
 import utils
 import warnings
+import page_duplicate_util
+import hashlib
+from nltk.corpus import stopwords
+
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
 # INSTANTIATION
 Bard = loadbard.LoadBard()
 
-# CONSTANTS
+# FILE NAMES
 DATA_DIR = "C:\\Users\\Conner\\Desktop\\developer\\DEV"
 # DATA_DIR = ""
 INDEX_DIR = "INDEX\\"
 INVERT_DIR = "INVERT\\"
+# INDEX
+termID_map_filename = f"{INDEX_DIR}termID.map"
+docID_store_file_filename = f"{INDEX_DIR}docid.map"
+supplemental_info_filename = f"{INDEX_DIR}bold-links.map"
+docID_hash_filename = f"{INDEX_DIR}docID_hash.map"
+# INVERT
+token_seek_map_filename = f"{INVERT_DIR}token_seek.map"
+corpus_token_frequency_filename = f"{INVERT_DIR}corpus_token_freq.map"
+
+# CONSTANTS
 SEARCH_RESULTS = 5
 # BUFFER = 500000  # 52428800 # 50 mb in bytes # currently 0.5 mb
-INDEX_BUFFER = utils.get_size_directory(DATA_DIR) / 2800  # 4000 == 1mb # 80 == 50mb # 400 == 10mb # 800 == 5mb
+INDEX_BUFFER = utils.get_size_directory(DATA_DIR) / 1000  # 4000 == 1mb # 80 == 50mb # 400 == 10mb # 800 == 5mb
 # json is 5x ram size
 # INDEX_BUFFER = 500000000  # 0.5mb in RAM, really can be up 150mb in json
-FINAL_MAX_LINES = 50000  # lines
+FINDEX_MAX_LINES = 50000  # lines
 FINDEX_BUFFER = 10000
+
+print("================================================")
 print(f"LIBRARY SIZE {utils.get_size_directory(DATA_DIR)/ 1000000}mb")
 print(f"BUFFER SIZE {INDEX_BUFFER / 1000000}mb")
-print(f"MAX LINES {FINAL_MAX_LINES}")
+print(f"MAX LINES {FINDEX_MAX_LINES}")
 
-# FILE NAMES
-# INDEX
-termID_map_name = f"{INDEX_DIR}termID.map"
-docID_store_file_name = f"{INDEX_DIR}docid.map"
-# INVERT
-token_map_file_name = f"{INVERT_DIR}token_seek.map"
+# RANKING
+LINKS_KEY = "links"
+BOLDS_KEY = "bolds"
+# SEARCH OPTIONS
+TEMP_WEIGHT = 1
+MD5_DUPLICATE_CHECK = True
+BOLDS_WEIGHTING = True
+POSITIONAL_WEIGHTING = True
+PAGERANK_WEIGHTING = True
 
 
 def write_bucket(inverted_index_bucket_ref, INDEX_DIR, docID):
@@ -62,6 +80,8 @@ def make_fragment_index():
     print("<--------------MAKING FRAGMENTED INDEX-----------------> 1/2")
     document_store = list()
     inverted_index_bucket = defaultdict(lambda: defaultdict(list))  # {token:{docID:{positions:}}}
+    supplemental_info = defaultdict(lambda: defaultdict(list))  # {docID:{links:[], bolds:[]}}
+    docID_hashes = defaultdict(int)
     tokenIDs = set()
     docID = 0
     doc_count = utils.count_docs(DATA_DIR)
@@ -72,21 +92,48 @@ def make_fragment_index():
     for subdir, dirs, files in os.walk(DATA_DIR):
         for file in files:
             if ".json" in file:
-                # If bucket is at-size
+                # If bucket is at-size, dump bucket
                 if sys.getsizeof(inverted_index_bucket) > INDEX_BUFFER:
                     print("\n<---------WRITING BUCKET--------->")
                     write_bucket(inverted_index_bucket, INDEX_DIR, docID)
-                    inverted_index_bucket = defaultdict(lambda: defaultdict(list))
+                    inverted_index_bucket = defaultdict(lambda: defaultdict(list))  # {token:{docID:{positions:}}}
                 # Open url-database file
                 with open(os.path.join(subdir, file), "r") as f:
                     jsonfile = json.load(f)
                     f.close()
                 document_store.append(jsonfile["url"])
-                # TOKENIZE!
                 soup = BeautifulSoup(jsonfile["content"], features="lxml")
+                tokens = ctoken.tokenize(soup.text)
+                # GENERATE TOKEN HASH
+                # TODO: implement own hashing function
+                docID_hashes[docID] = hashlib.md5(soup.text.encode('utf-8')).hexdigest()
+
+                # EXTRACT BOLDS
+                for bold in soup.find_all(["b", "strong", "h1", "h2", "h3"]):
+                    [supplemental_info[docID][BOLDS_KEY].append(word) for word in ctoken.tokenize(bold.text)]
+
+                # EXTRACT LINKS
+                # [(link, anchor_text)]
+                links = [(link["href"], ctoken.tokenize(link.text))
+                                                       for link in soup.find_all("a")
+                         if link is not None and not TypeError
+                         and "href" in link.keys()
+                         and link["href"]
+                         and link["href"][0] != "#"
+                         ]
+
+                supplemental_info[docID][LINKS_KEY] = [link[0] for link in links]
+                # TOKENIZE!
                 position = 0
-                for token in ctoken.tokenize(soup.text):
-                    # new information in index goes here
+                # INDEX ANCHOR TEXT
+                for link in links:
+                    if link[1]:
+                        for token in link[1]:
+                            inverted_index_bucket[token][str(docID)].append(position)
+                            position += 1
+                            tokenIDs.add(token)
+                # add rest of tokens
+                for token in tokens:
                     inverted_index_bucket[token][str(docID)].append(position)
                     position += 1
                     tokenIDs.add(token)
@@ -96,20 +143,33 @@ def make_fragment_index():
                 percent_progress_human = "{:.5f}".format((docID / doc_count) * 100)
                 if Bard: # and percent_progress % 0.000001 == 0:
                     Bard.update(f"{percent_progress_human}% {sys.getsizeof(inverted_index_bucket)/1000000}mb {subdir}/{file}", replace=True)
+
+                # INCREMENTING DOCID COUNTER
                 docID += 1
-    print("<---------WRITING BUCKET--------->")
+
+    print("<---------WRITING FINAL BUCKET--------->")
     write_bucket(inverted_index_bucket, INDEX_DIR, docID)
     inverted_index_bucket.clear()
 
     print("<---WRITING DOCUMENT STORE------->")
-    with open(docID_store_file_name, "w") as f:
+    with open(docID_store_file_filename, "w") as f:
         json.dump(document_store, f)
         f.close()
 
     print("<-----WRITING TERM ID STORE------>")
     sorted_tokenIDs = sorted(list(tokenIDs))
-    with open(termID_map_name, "w") as f:
+    with open(termID_map_filename, "w") as f:
         json.dump(sorted_tokenIDs, f)
+        f.close()
+
+    print("<-----WRITING SUPPLEMENTAL LINK/BOLD STORE------>")
+    with open(supplemental_info_filename, "w") as f:
+        json.dump(supplemental_info, f)
+        f.close()
+
+    print("<-----WRITING SUPPLEMENTAL LINK/BOLD STORE------>")
+    with open(docID_hash_filename, "w") as f:
+        json.dump(docID_hashes, f)
         f.close()
 
     # BARD OUT!
@@ -125,12 +185,12 @@ def merge_frag_index():
     """
     print("<--------------MERGING FRAGMENTED INDEX-----------------> 2/2")
     # load sorted tokenIDs
-    with open(termID_map_name, "r") as f:
+    with open(termID_map_filename, "r") as f:
         sorted_tokenIDs = json.load(f)
 
     if sorted_tokenIDs != sorted(sorted_tokenIDs):
         raise IndexError
-    print("tokens: ",len(sorted_tokenIDs))
+    print("termID_map_tokens: ",len(sorted_tokenIDs))
 
     # BARD IN!
     if Bard:
@@ -144,7 +204,7 @@ def merge_frag_index():
                 file_objects.append(open(f"{INDEX_DIR}{file}", "r"))
 
     # IO Token Map and Final Index
-    token_map_file = open(token_map_file_name, "w")
+    token_map_file = open(token_seek_map_filename, "w")
     # open outfile for final database and the map file
     outfile_ID = 0
     outfile_name = f"{INVERT_DIR}{outfile_ID}.findex"
@@ -157,9 +217,12 @@ def merge_frag_index():
     token_map = defaultdict(lambda: defaultdict(list))  # {token:{file:file_seek_position}}
     tokenID = 0
 
+    # corpus token frequency metric
+    corpus_token_freq = defaultdict(int) # {token:count}
+
     while tokenID < len(sorted_tokenIDs):
         # check if outfile is sufficient line size to merit new outfile
-        if outfile_lines > FINAL_MAX_LINES:
+        if outfile_lines > FINDEX_MAX_LINES:
             outfile.close()
             print("\n<---------NEW OUTFILE--------->")
             # start new outfile
@@ -180,10 +243,11 @@ def merge_frag_index():
                 for docID, positions in docIDs_to_positions.items():
                     for position in positions:
                         read_buffer[token][docID].append(position)
+                        corpus_token_freq[token] += 1
             Bard.update(f"{file.name}", replace=True)
         sorted_readbuffer_ids = sorted(list(map(lambda x: sorted_tokenIDs.index(x), read_buffer.keys())))
         while len(read_buffer.keys()) > 0:
-            if outfile_lines > FINAL_MAX_LINES:
+            if outfile_lines > FINDEX_MAX_LINES:
                 outfile.close()
                 print("\n<---------NEW OUTFILE--------->")
                 # start new outfile
@@ -218,7 +282,12 @@ def merge_frag_index():
                             replace=True)
 
     # dump token map which contains {token:{file:file_seek_position}}
+    print("<-----WRITING TOKEN SEEK MAP------>")
     json.dump(token_map, token_map_file)
+    print("<-----WRITING ------>")
+    with open(corpus_token_frequency_filename, "w") as f:
+        json.dump(corpus_token_freq, f)
+        f.close()
 
     # close all files
     for file in file_objects:
@@ -238,7 +307,7 @@ def normalization_term(term_scores):
     return math.sqrt(sum(some_list))
 
 
-def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_dict):
+def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_dict, duplicate_docIDs, bold_links_map):
     ret_results = defaultdict(tuple)
     for query_phrase in search_queries_ref:
         time_search_start = time.perf_counter()
@@ -252,8 +321,11 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_d
                         f.seek(seek_pos)  # sends cursor to position
                         entry = orjson.loads(f.readline().replace("'", "\"")) # {docID:[seek_positions]}
                         for docID in entry.keys():
-                            for pos in entry[docID]:
-                                term_docID_positions[toke][docID].append(pos)
+                            if docID in duplicate_docIDs:
+                                print("saved you a duplicate!")
+                            else:
+                                for pos in entry[docID]:
+                                    term_docID_positions[toke][docID].append(pos)
         except KeyError:
             print("A token in query does not exist, skipping query.")
             continue
@@ -274,62 +346,48 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_d
                 # weighted tf = 1+log(term frequency in document)
                 weighted_tf = 1 + math.log(len(term_docID_positions[term][docID]))
                 # weighted idf = log(n document count / (how many documents the term appeared in)
-                weighted_idf = math.log(len(docID_store) / len(term_docID_positions[term]))
+                weighted_idf = math.log(len(docid_store_ref) / len(term_docID_positions[term]))
                 # weighted tf-idf score
                 tfidf = weighted_tf*weighted_idf
                 query_normalized_weighted_tfidf_dict[docID][term] = tfidf
 
-            # NORMALIZE query-term scores
-            n_term = normalization_term(query_normalized_weighted_tfidf_dict[docID].values())
-            query_normalized_weighted_tfidf_dict[docID][term] = query_normalized_weighted_tfidf_dict[docID][term] / n_term
+                # NORMALIZE query-term scores
+                n_term = normalization_term(query_normalized_weighted_tfidf_dict[docID].values())
+                query_normalized_weighted_tfidf_dict[docID][term] =\
+                    query_normalized_weighted_tfidf_dict[docID][term] / n_term
 
-            # COMPUTE DOCUMENT TF
-            # term frequency in document, list of score values() for all terms
-            # weighted document tf == 1+log(term frequency in document)
-            document_normalized_weighted_tf_dict[docID][term] = 1 + math.log(len(term_docID_positions[term][docID]))
-            # NORMALIZE DOCUMENT TF
-            n_term = normalization_term(document_normalized_weighted_tf_dict[docID].values())
-            document_normalized_weighted_tf_dict[docID][term] = document_normalized_weighted_tf_dict[docID][term] / n_term
+                # COMPUTE DOCUMENT TF
+                # term frequency in document, list of score values() for all terms
+                # weighted document tf == 1+log(term frequency in document)
+                document_normalized_weighted_tf_dict[docID][term] =\
+                    1 + math.log(len(term_docID_positions[term][docID]))
+                # NORMALIZE DOCUMENT TF
+                n_term = normalization_term(document_normalized_weighted_tf_dict[docID].values())
+                document_normalized_weighted_tf_dict[docID][term] =\
+                    document_normalized_weighted_tf_dict[docID][term] / n_term
 
-        # COMPUTE FINAL TERM-DOCUMENT RELEVANCE SCORE
+        # COMPUTE FINAL TERM-DOCUMENT RELEVANCE SCORE-----------------------
         # sum(for all terms: query_term_score*document_normalized_weighted_tf_dict)
         for docID in intersect:
-            some_list = list()
+            sum_list = list()
             for term in tokenized_query:
-                # TODO: make sure sum(for each term: term_query_tfidf*term_document_tfidf)is correct
-                some_list.append(query_normalized_weighted_tfidf_dict[docID][term] * document_normalized_weighted_tf_dict[docID][term])
-            final_query_score = sum(some_list)
-            final_scores[docid_store_ref[int(docID)]] = final_query_score
+                score = query_normalized_weighted_tfidf_dict[docID][term] \
+                        * document_normalized_weighted_tf_dict[docID][term]
+                # TODO: all extra weight terms
+
+                if BOLDS_WEIGHTING and docID in bold_links_map.keys() and "bold" in bold_links_map[docID].keys()\
+                        and term in bold_links_map[docID]["bolds"]:
+                    score += TEMP_WEIGHT
+                    print("we struck BOLD!")
+                if POSITIONAL_WEIGHTING:
+                    pass
+                if PAGERANK_WEIGHTING:
+                    pass
+                sum_list.append(score)
+            final_scores[docid_store_ref[int(docID)]] = sum(sum_list)
 
         # SORT AND SLICE RESULTS
         search_results = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)[0:SEARCH_RESULTS]
-
-        # print((time.perf_counter() - time_search_start)*1000)
-        # for elem in search_results:
-        #     print(elem)
-        # exit()
-        # score = defaultdict(lambda: defaultdict(float)) # {docID:{score_params:float}}
-        # final_score = defaultdict(float)
-        # for docID in intersect:
-        #     for token in tokenized_query:
-        #         # TODO: remove matches, is a ridiculous number
-        #         score[docID]["matches"] += len(term_docID_positions[token][docID])/10000
-        #         # TODO: check if any query words are bolded in document, will be between 0 and n
-        #         # score[docID]["bolds_count"] += term_docID_positions[token][docID]["bolds_count"]
-        #         score[docID]["bolds_count"] += 1
-        #         # TODO: add TF-IDF score for each word (will be below 1)
-        #         # TODO: does tf-idf have to be done at search time for the whole query or just each word?
-        #         # score[docID]["tfidf"] += term_docID_positions[token][docID]["tfidf"] # index per word tfidf
-        #         # score[docID]["tfidf"] = compute_tfidf() # newly computed tf-idf
-        #         score[docID]["tfidf"] = 0.15  # newly computed tf-idf
-        #     # TODO: check if query exists in adjacent positional order in document, score for each ngram
-        #     # score[docID]["ngrams"] \
-        #     #     += position_intersect_count([term_docID_positions[token][docID] for token in tokenized_query])
-        #
-        #     # TODO: recompute score for docID
-        #     final_score[docid_store_ref[int(docID)]] = sum(score[docID].values())
-        # # sorted and slice top results
-        # search_results = sorted(final_score.items(), key=lambda x: x[1], reverse=True)[0:SEARCH_RESULTS]
 
         time_taken = time.perf_counter() - time_search_start
         if intersect:
@@ -340,8 +398,8 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_d
 
 
 if __name__ == '__main__':
-    frag_index_exists = True
-    all_index_exists = True
+    frag_index_exists = False
+    all_index_exists = False
 
     # Build Indexes
     if not frag_index_exists:
@@ -353,10 +411,27 @@ if __name__ == '__main__':
         all_index_exists = True
 
     # add maps back to memory
-    with open(token_map_file_name, "r") as f:
+    with open(token_seek_map_filename, "r") as f:
         from_file_token_map = json.load(f)
-    with open(docID_store_file_name, "r") as f:
+    with open(docID_store_file_filename, "r") as f:
         docID_store = json.load(f)
+    with open(docID_hash_filename, "r") as f:
+        docID_hash = json.load(f)
+    with open(supplemental_info_filename, "r") as f:
+        bolds_links_store = json.load(f)
+    with open(corpus_token_frequency_filename, "r") as f:
+        corpus_token_frequency = json.load(f)
+
+    print("documents in docID store: ", len(docID_store))
+    print("documents in hash store: ", len(docID_hash))
+    duplicate_docIDs = page_duplicate_util.find_duplicates(docID_hash)
+    print("duplicates: ", len(duplicate_docIDs))
+    print("tokens: ", len(from_file_token_map))
+
+    stopwords = [ctoken.tokenize(i)[0] for i in stopwords.words('english')]
+    print("top 500 terms: ", [term for term in sorted(corpus_token_frequency)[0:500] if term not in stopwords])
+    print("================================================")
+    print()
 
     # open all files in FINDEX
     findex_file_objects = dict()
@@ -369,7 +444,8 @@ if __name__ == '__main__':
     # Search
     search_queries = ["machine learning", "cristina lopes", "machine learning", "ACM", "master of software engineering"]
     # search_queries = ["master of software engineering"]
-    results = search_multiple(search_queries, from_file_token_map, docID_store, findex_file_objects)
+    results = search_multiple(search_queries, from_file_token_map, docID_store,
+                              findex_file_objects, duplicate_docIDs, bolds_links_store)
     for query in results.keys():
         result = results[query][0]
         time_taken = results[query][1]

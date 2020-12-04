@@ -1,20 +1,45 @@
 from flask import Flask, request, render_template
 import main
 import json
-
+import os
+import page_duplicate_util
 app = Flask(__name__)
 
-INDEX_DIR = "INDEX/"
-INVERT_DIR = "INVERT/"
-final_outfile_name = f"{INVERT_DIR}final.txt"
-token_map_file_name = f"{INVERT_DIR}token_map.txt"
-termID_map_name = f"{INDEX_DIR}termID_map.json"
-docID_store_file_name = f"{INDEX_DIR}docid.map"
+# FILE NAMES
+DATA_DIR = "C:\\Users\\Conner\\Desktop\\developer\\DEV2"
+# DATA_DIR = ""
+INDEX_DIR = "INDEX\\"
+INVERT_DIR = "INVERT\\"
+# INDEX
+termID_map_filename = f"{INDEX_DIR}termID.map"
+docID_store_file_filename = f"{INDEX_DIR}docid.map"
+supplemental_info_filename = f"{INDEX_DIR}bold-links.map"
+docID_hash_filename = f"{INDEX_DIR}docID_hash.map"
+# INVERT
+token_seek_map_filename = f"{INVERT_DIR}token_seek.map"
+corpus_token_frequency_filename = f"{INVERT_DIR}corpus_token_freq.map"
 
-with open(token_map_file_name, "r") as f:
-    token_map = json.load(f)
-with open(docID_store_file_name, "r") as f:
+# TOKEN MAP FILES
+# add maps back to memory
+with open(token_seek_map_filename, "r") as f:
+    from_file_token_map = json.load(f)
+with open(docID_store_file_filename, "r") as f:
     docID_store = json.load(f)
+with open(docID_hash_filename, "r") as f:
+    docID_hash = json.load(f)
+    duplicate_docIDs = page_duplicate_util.find_duplicates(docID_hash)
+with open(supplemental_info_filename, "r") as f:
+    bolds_links_store = json.load(f)
+with open(corpus_token_frequency_filename, "r") as f:
+    corpus_token_frequency = json.load(f)
+
+# open all files in FINDEX
+findex_file_objects = dict()
+for subdir, dirs, files in os.walk(INVERT_DIR):
+    for file in files:
+        if ".findex" in file:
+            f = open(f"{INVERT_DIR}{file}", "r")
+            findex_file_objects[f.name] = f
 
 template = '<form method="POST">\n\t<h1>SEARCH</h1>\n\t<input name="search">\n\t<input type="submit">\n</form>'
 
@@ -25,7 +50,8 @@ def my_form():
 @app.route('/', methods=['POST'])
 def my_form_post():
     query = request.form['search']
-    results = main.search_multiple([query], token_map_ref=token_map, docid_store_ref=docID_store)
+    results = main.search_multiple([query], from_file_token_map, docID_store,
+                              findex_file_objects, duplicate_docIDs, bolds_links_store)
     result_str = list()
     for query in results.keys():
         result = results[query][0]

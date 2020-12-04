@@ -18,7 +18,7 @@ def tokenize(line: str, trim_stopwords=False) -> list:
     for word in line.lower().translate(TABLE2).split():
         # lower:O(N) + translate:O(N) + split:O(N) + forloop:O(N) = O(4N) = O(N)
         try:
-            word = word.strip(".").translate(TABLE_NOSPACE)
+            word = word.strip(".@").translate(TABLE_NOSPACE)
             if trim_stopwords and word in STOPWORDS:
                 break
             if word != '':
