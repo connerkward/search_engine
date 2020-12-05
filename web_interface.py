@@ -78,10 +78,15 @@ def my_form_post():
     results = main.search_multiple(query, from_file_token_map, docID_store,
                                    findex_file_objects, duplicate_docIDs, bolds_links_store, sorted_pagerank)
     result_str = list()
+    if not results:
+        result_str.append(f"Token(s) do not appear in corpus.<br>")
     for query in results.keys():
         result = results[query][0]
         time_taken = results[query][1]
         result_str.append(f"Query '{query}' took {time_taken} seconds.<br>")
+        if not results[query][0]:
+            print("empty results")
+            result_str.append(f"Token(s) do not appear in corpus.<br>")
         for index, url in enumerate(result):
             result_str.append(f"{index + 1}. {url[0]} score:{url[1]}<br>")
         result_str.append("<br>")

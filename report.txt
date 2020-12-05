@@ -1,16 +1,38 @@
-20 QUERIES
-TO TEST SEARCH/RANK SPEED AND "PERFORMANCE"
-1. MOSFET - does not appear in dataset
-2. is a common word in the dataset
-3. is a least common word in the dataset
-4. is a averagely common word in data set
-...
-
-POOREST PERFORMERS
-...
-HOW SPEED WAS INCREASED:
-...
-HOW SPEED WAS INCREASED:
-...
-HOW SPEED WAS INCREASED:
-...
+#20 QUERIES
+#Term that Dont Exist in Dataset
+MOSFET
+#Query with terms that exist in dataset, but whole phrase does not
+Dingo ate me baby
+#From Common Words
+support document
+browser
+sourcer
+rwxrwxrwx
+cbcl
+# From Least Common Words
+lawks
+lawler
+laveman
+# Bold Query
+breast cancer wisconsin
+language for distributed embedded systems
+# Long Queries
+the university of california irvine ai club workshop
+# Assumedly Common Words (more matching documents)
+master of software engineering
+computer science
+informatics
+computable plant
+# One Letter Query
+a
+# Query Of Common and Least Common
+krisberg org
+# Long word
+kovarik@mcmail.cis.mcmaster.ca
+# POOREST PERFORMERS
+the university of california irvine ai club workshop~1259.263499999996-ms
+the university of california irvine ai club workshop~653.0355000000014-ms
+sourcer~432.52720000000267-ms
+computer science~608.8585999999978-ms~424.3296000000001-ms
+a~638.1358000000006-ms
+master of software engineering~295.1747000000005-ms

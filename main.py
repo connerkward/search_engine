@@ -454,18 +454,25 @@ if __name__ == '__main__':
                    for docID in bolds_links_store.keys() if bolds_links_store[docID]["links"]}
     sorted_pagerank = sorted(cpagerank.pagerank(docID_links, invert_docID_map).items(), key=lambda x: x[1], reverse=True)
 
-    PRINT_TERMS = 10
+    PRINT_TERMS = 1
     # foo = int(avg_freq)-PRINT_TERMS
     # bar = int(avg_freq)+PRINT_TERMS
     print("documents in docID store: ", len(docID_store))
     print("documents in hash store: ", len(docID_hash))
     print("duplicates: ", len(duplicate_docIDs))
     print("tokens: ", len(from_file_token_map))
-    print(f"top {PRINT_TERMS} terms: {sorted_corpus[0:PRINT_TERMS]}")
-    print(f"bottom {PRINT_TERMS} terms: {list(reversed(sorted_corpus))[0:PRINT_TERMS]}")
+    print(f"avg", len(sorted_corpus))
+    avg = int(len(sorted_corpus)/2)
+    print(f"median count {PRINT_TERMS} terms: {sorted_corpus[avg:PRINT_TERMS]}")
+
+    print(f"top count {PRINT_TERMS} terms: {sorted_corpus[0:PRINT_TERMS]}")
+    print(f"bottom count {PRINT_TERMS} terms: {list(reversed(sorted_corpus))[0:PRINT_TERMS]}")
+    top_pageranks = sorted_pagerank[0:PRINT_TERMS]
+    bottom_pageranks = list(reversed(sorted_pagerank))[0:PRINT_TERMS]
+    print(f"top pagerank {PRINT_TERMS} terms: {top_pageranks}")
+    print(f"bottom pagerank {PRINT_TERMS} terms: {bottom_pageranks}")
     print("================================================")
     print()
-
     # open all files in FINDEX
     findex_file_objects = dict()
     for subdir, dirs, files in os.walk(INVERT_DIR):
@@ -475,7 +482,11 @@ if __name__ == '__main__':
                 findex_file_objects[f.name] = f
 
     # Search
-    search_queries = ["master of software engineering"]
+    search_queries = ["master of software engineering", "MOSFET", "Dingo ate me baby", "support document",
+                      "browser", "the university of california irvine ai club workshop", "sourcer","lawks", "lawler",
+                      "breast cancer wisconsin", "computer science ", "informatics", "rwxrwxrwx", "laveman",
+                      "language for distributed embedded systems", "a",
+                      "krisberg org", "kovarik@mcmail.cis.mcmaster.ca", "cbcl", ]
     # search_queries = ["master of software engineering"]
     results = search_multiple(search_queries, from_file_token_map, docID_store,
                               findex_file_objects, duplicate_docIDs, bolds_links_store, sorted_pagerank)
