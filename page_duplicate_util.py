@@ -1,8 +1,5 @@
 import json
-
-INDEX_DIR = "INDEX\\"
-docID_hash_filename = f"{INDEX_DIR}docID_hash.map"
-
+from collections import defaultdict
 
 def find_duplicates(docID_hash_dict):
     """
@@ -20,9 +17,31 @@ def find_duplicates(docID_hash_dict):
     return docID_of_duplicates
 
 
+def gen_inverted_docID_map(docIDmap):
+    ret = defaultdict(int)
+    for index, docID in enumerate(docIDmap):
+        ret[docID] = index
+    return ret
+
+
 if __name__ == '__main__':
-    with open(docID_hash_filename, "r") as f:
-        docID_hash = json.load(f)
-        print("documents: ", len(docID_hash))
-        duplicates = find_duplicates(docID_hash)
-        print("duplicates: ", len(duplicates))
+    # FILE NAMES
+    DATA_DIR = "C:\\Users\\Conner\\Desktop\\developer\\DEV"
+    # DATA_DIR = ""
+    INDEX_DIR = "INDEX\\"
+    INVERT_DIR = "INVERT\\"
+    # INDEX
+    termID_map_filename = f"{INDEX_DIR}termID.map"
+    docID_store_file_filename = f"{INDEX_DIR}docid.map"
+    supplemental_info_filename = f"{INDEX_DIR}bold-links.map"
+    docID_hash_filename = f"{INDEX_DIR}docID_hash.map"
+    # INVERT
+    token_seek_map_filename = f"{INVERT_DIR}token_seek.map"
+    corpus_token_frequency_filename = f"{INVERT_DIR}corpus_token_freq.map"
+
+    invert_docID_filename = f"{INDEX_DIR}inverted_docID.map"
+
+    with open(docID_store_file_filename, "r") as f:
+        inverted_docID_map = gen_inverted_docID_map(json.load(f))
+        with open(invert_docID_filename, "w") as f:
+            json.dump(inverted_docID_map, f)

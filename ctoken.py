@@ -12,6 +12,7 @@ stemmer = SnowballStemmer("english")
 STOPWORDS = set(stopwords.words('english'))
 NO_NUMERIC = True
 
+
 def tokenize(line: str, trim_stopwords=False) -> list:
     tokenlist = list()
     line = re.sub(r"\. ", ' ', line) # strips periods at the end of sentences
@@ -25,6 +26,7 @@ def tokenize(line: str, trim_stopwords=False) -> list:
                 if NO_NUMERIC and any(map(str.isdigit, word)):
                     pass
                 else:
+
                     tokenlist.append(stemmer.stem(word).encode("ascii").decode())
         except UnicodeEncodeError:  # for handling bad characters in word
             pass
@@ -57,3 +59,7 @@ def computeWordFrequencies_postion_linear(tokenlist: list) -> dict:
             tokencount[word].append(index)
             index += 1
     return tokencount
+
+if __name__ == '__main__':
+    stri= "master of software engineering"
+    print(tokenize(stri))

@@ -28,6 +28,5 @@ def make_docID_lib(docID_store_file_name, DATA_DIR):
                     with open(f"{subdir}/{file}", "r",) as f:
                         url = json.load(f)["url"]
                         docIDs.append(url)
-                        print(url)
                         f1.write(url+"\n")
     return docIDs

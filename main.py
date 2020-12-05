@@ -24,7 +24,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 Bard = loadbard.LoadBard()
 
 # FILE NAMES
-DATA_DIR = "C:\\Users\\Conner\\Desktop\\developer\\DEV2"
+DATA_DIR = "C:\\Users\\Conner\\Desktop\\developer\\DEV"
 # DATA_DIR = ""
 INDEX_DIR = "INDEX\\"
 INVERT_DIR = "INVERT\\"
@@ -33,6 +33,7 @@ termID_map_filename = f"{INDEX_DIR}termID.map"
 docID_store_file_filename = f"{INDEX_DIR}docid.map"
 supplemental_info_filename = f"{INDEX_DIR}bold-links.map"
 docID_hash_filename = f"{INDEX_DIR}docID_hash.map"
+invert_docID_filename = f"{INDEX_DIR}inverted_docID.map"
 # INVERT
 token_seek_map_filename = f"{INVERT_DIR}token_seek.map"
 corpus_token_frequency_filename = f"{INVERT_DIR}corpus_token_freq.map"
@@ -44,15 +45,6 @@ INDEX_BUFFER = (utils.get_size_directory(DATA_DIR) / FILE_COUNT) * 55  # size/10
 FINDEX_MAX_LINES = 50000  # lines
 FINDEX_BUFFER = 10000
 
-if Bard:
-    print("================================================")
-    print(f"LIBRARY SIZE: {utils.get_size_directory(DATA_DIR) / 1000000}mb")
-    print(f"LIBRARY SIZE: {FILE_COUNT} files")
-    print(f"INDEX BUFFER SIZE: {INDEX_BUFFER / 1000000}mb")
-    print(f"BUFFER FRACTION: {INDEX_BUFFER/utils.get_size_directory(DATA_DIR)}")
-    print(f"FINDEX MAX LINES: {FINDEX_MAX_LINES}")
-    print("================================================")
-
 # RANKING
 LINKS_KEY = "links"
 BOLDS_KEY = "bolds"
@@ -60,7 +52,7 @@ BOLDS_KEY = "bolds"
 TEMP_WEIGHT = 1
 BOLDS_WEIGHTING = True
 POSITIONAL_WEIGHTING = False
-PAGERANK_WEIGHTING = False
+PAGERANK_WEIGHTING = True
 MD5_DUPLICATE_CHECK = True
 USE_SIMHASH = False
 # NOTE: if SIMHASH is enabled, it will replace the MD5 hash check.
@@ -158,10 +150,6 @@ def make_fragment_index():
                     Bard.update(log, replace=True)
                 # INCREMENTING DOCID COUNTER
                 docID += 1
-
-
-    # TODO: insert pagerank? here
-
 
     print("<---------WRITING FINAL BUCKET--------->")
     write_bucket(inverted_index_bucket, INDEX_DIR, docID)
@@ -323,13 +311,14 @@ def normalization_term(term_scores):
     return math.sqrt(sum(some_list))
 
 
-def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_dict, duplicate_docIDS, bold_links_map):
+def search_multiple(search_queries_ref, token_map_ref, docid_store_ref,
+                    findex_dict, duplicate_docIDS, bold_links_map, sorted_pagerank_ref):
     ret_results = defaultdict(tuple)
     for query_phrase in search_queries_ref:
         time_search_start = time.perf_counter()
         term_docID_positions = defaultdict(lambda: defaultdict(list)) # {term{docID:[positions]}}
+        print(query_phrase)
         tokenized_query = ctoken.tokenize(query_phrase, trim_stopwords=False)
-
 
         try:
             for toke in tokenized_query:
@@ -339,7 +328,7 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_d
                         f.seek(seek_pos)  # sends cursor to position
                         entry = orjson.loads(f.readline().replace("'", "\"")) # {docID:[seek_positions]}
                         for docID in entry.keys():
-                            if not USE_SIMHASH and MD5_DUPLICATE_CHECK and docID in duplicate_docIDS:
+                            if MD5_DUPLICATE_CHECK and docID in duplicate_docIDS:
                                 print("saved you an EXACT MD5 duplicate!")
                             else:
                                 for pos in entry[docID]:
@@ -347,9 +336,6 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_d
         except KeyError:
             print("A token in query does not exist, skipping query.")
             continue
-
-
-
         # COMPUTE INTERSECTION
         intersect = set.intersection(*[set(term_docID_positions[term].keys()) # intersection docID's
                                        for term in term_docID_positions.keys()])
@@ -393,7 +379,6 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_d
             for term in tokenized_query:
                 score = query_normalized_weighted_tfidf_dict[docID][term] \
                         * document_normalized_weighted_tf_dict[docID][term]
-                # TODO: all extra weight terms
                 if BOLDS_WEIGHTING and docID in bold_links_map.keys() and "bold" in bold_links_map[docID].keys()\
                         and term in bold_links_map[docID]["bolds"]:
                     score += TEMP_WEIGHT
@@ -401,7 +386,12 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_d
                 if POSITIONAL_WEIGHTING:
                     pass
                 if PAGERANK_WEIGHTING:
-                    pass
+                    try:
+                        page_rank= sorted_pagerank_ref[int(docID)][1]
+                        if page_rank > 0.001:
+                            score *= page_rank
+                    except IndexError:
+                        pass
                 sum_list.append(score)
             final_scores[docid_store_ref[int(docID)]] = sum(sum_list)
 
@@ -417,8 +407,17 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_d
 
 
 if __name__ == '__main__':
-    frag_index_exists = False
-    all_index_exists = False
+    if Bard:
+        print("================================================")
+        print(f"LIBRARY SIZE: {utils.get_size_directory(DATA_DIR) / 1000000}mb")
+        print(f"LIBRARY SIZE: {FILE_COUNT} files")
+        print(f"INDEX BUFFER SIZE: {INDEX_BUFFER / 1000000}mb")
+        print(f"BUFFER FRACTION: {INDEX_BUFFER / utils.get_size_directory(DATA_DIR)}")
+        print(f"FINDEX MAX LINES: {FINDEX_MAX_LINES}")
+        print("================================================")
+
+    frag_index_exists = True
+    all_index_exists = True
 
     # Build Indexes
     if not frag_index_exists:
@@ -440,6 +439,9 @@ if __name__ == '__main__':
         bolds_links_store = json.load(f)
     with open(corpus_token_frequency_filename, "r") as f:
         corpus_token_frequency = json.load(f)
+    with open(invert_docID_filename, "r") as f:
+        invert_docID_map = json.load(f)
+
     stopwords = [ctoken.tokenize(i)[0] for i in stopwords.words('english')]
     sorted_corpus = [(term, count)
                      for term, count
@@ -447,6 +449,11 @@ if __name__ == '__main__':
                      if term not in stopwords]
     # avg_freq = sum(list(corpus_token_frequency.values()))/len(corpus_token_frequency)
     duplicate_docIDs = page_duplicate_util.find_duplicates(docID_hash)
+
+    docID_links = {docID_store[int(docID)]: bolds_links_store[docID]["links"]
+                   for docID in bolds_links_store.keys() if bolds_links_store[docID]["links"]}
+    sorted_pagerank = sorted(cpagerank.pagerank(docID_links, invert_docID_map).items(), key=lambda x: x[1], reverse=True)
+
     PRINT_TERMS = 10
     # foo = int(avg_freq)-PRINT_TERMS
     # bar = int(avg_freq)+PRINT_TERMS
@@ -468,10 +475,10 @@ if __name__ == '__main__':
                 findex_file_objects[f.name] = f
 
     # Search
-    search_queries = ["machine learning", "cristina lopes", "machine learning", "ACM", "master of software engineering"]
+    search_queries = ["master of software engineering"]
     # search_queries = ["master of software engineering"]
     results = search_multiple(search_queries, from_file_token_map, docID_store,
-                              findex_file_objects, duplicate_docIDs, bolds_links_store)
+                              findex_file_objects, duplicate_docIDs, bolds_links_store, sorted_pagerank)
     for query in results.keys():
         result = results[query][0]
         time_taken = results[query][1]
