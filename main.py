@@ -1,5 +1,5 @@
 import os
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, SoupStrainer
 from collections import defaultdict
 import loadbard
 import ctoken
@@ -14,7 +14,9 @@ import warnings
 import page_duplicate_util
 import hashlib
 from nltk.corpus import stopwords
+import validators
 import csimhash
+import cpagerank
 
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
@@ -22,7 +24,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 Bard = loadbard.LoadBard()
 
 # FILE NAMES
-DATA_DIR = "C:\\Users\\Conner\\Desktop\\developer\\DEV"
+DATA_DIR = "C:\\Users\\Conner\\Desktop\\developer\\DEV2"
 # DATA_DIR = ""
 INDEX_DIR = "INDEX\\"
 INVERT_DIR = "INVERT\\"
@@ -112,9 +114,7 @@ def make_fragment_index():
                 tokens = ctoken.tokenize(soup.text)
 
                 # GENERATE TOKEN HASH
-                if USE_SIMHASH and tokens:
-                    docID_hashes[docID] = csimhash.hash(tokens)
-                elif not USE_SIMHASH:
+                if not USE_SIMHASH:
                     docID_hashes[docID] = hashlib.md5(soup.text.encode('utf-8')).hexdigest()
 
                 # EXTRACT BOLDS
@@ -123,19 +123,18 @@ def make_fragment_index():
 
                 # EXTRACT LINKS
                 # [(link, anchor_text)]
-                links = [(link["href"], ctoken.tokenize(link.text))
-                                                       for link in soup.find_all("a")
-                         if link is not None and not TypeError
-                         and "href" in link.keys()
-                         and link["href"]
-                         and link["href"][0] != "#"
-                         ]
+                links = list()
+                for link in BeautifulSoup(jsonfile["content"], features="lxml", parse_only=SoupStrainer("a")).find_all("a"):
+                    try:
+                        if hasattr(link, "href") and validators.url(link["href"]):
+                            links.append((link["href"], ctoken.tokenize(link.text)))
+                    except KeyError:
+                        pass
 
                 supplemental_info[docID][LINKS_KEY] = [link[0] for link in links]
                 # TOKENIZE!
                 position = 0
                 # INDEX ANCHOR TEXT
-                # TODO: check if links actually are captured
                 for link in links:
                     if link[1]:
                         for token in link[1]:
@@ -159,6 +158,10 @@ def make_fragment_index():
                     Bard.update(log, replace=True)
                 # INCREMENTING DOCID COUNTER
                 docID += 1
+
+
+    # TODO: insert pagerank? here
+
 
     print("<---------WRITING FINAL BUCKET--------->")
     write_bucket(inverted_index_bucket, INDEX_DIR, docID)
@@ -320,17 +323,13 @@ def normalization_term(term_scores):
     return math.sqrt(sum(some_list))
 
 
-def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_dict, docID_hash, bold_links_map):
+def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_dict, duplicate_docIDS, bold_links_map):
     ret_results = defaultdict(tuple)
     for query_phrase in search_queries_ref:
         time_search_start = time.perf_counter()
         term_docID_positions = defaultdict(lambda: defaultdict(list)) # {term{docID:[positions]}}
         tokenized_query = ctoken.tokenize(query_phrase, trim_stopwords=False)
 
-        if USE_SIMHASH:
-            duplicate_docIDs = []
-        else:
-            duplicate_docIDs = page_duplicate_util.find_duplicates(docID_hash)
 
         try:
             for toke in tokenized_query:
@@ -340,7 +339,7 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref, findex_d
                         f.seek(seek_pos)  # sends cursor to position
                         entry = orjson.loads(f.readline().replace("'", "\"")) # {docID:[seek_positions]}
                         for docID in entry.keys():
-                            if not USE_SIMHASH and MD5_DUPLICATE_CHECK and docID in duplicate_docIDs:
+                            if not USE_SIMHASH and MD5_DUPLICATE_CHECK and docID in duplicate_docIDS:
                                 print("saved you an EXACT MD5 duplicate!")
                             else:
                                 for pos in entry[docID]:
@@ -447,17 +446,15 @@ if __name__ == '__main__':
                      in sorted(corpus_token_frequency.items(), key=lambda x: x[1], reverse=True)
                      if term not in stopwords]
     # avg_freq = sum(list(corpus_token_frequency.values()))/len(corpus_token_frequency)
-
+    duplicate_docIDs = page_duplicate_util.find_duplicates(docID_hash)
     PRINT_TERMS = 10
     # foo = int(avg_freq)-PRINT_TERMS
     # bar = int(avg_freq)+PRINT_TERMS
     print("documents in docID store: ", len(docID_store))
     print("documents in hash store: ", len(docID_hash))
-    # print("duplicates: ", len(duplicate_docIDs))
+    print("duplicates: ", len(duplicate_docIDs))
     print("tokens: ", len(from_file_token_map))
-    # print(f"average token frequency: {avg_freq}")
     print(f"top {PRINT_TERMS} terms: {sorted_corpus[0:PRINT_TERMS]}")
-    # print(f"average {PRINT_TERMS*2} terms: {sorted_corpus[foo:bar]}")
     print(f"bottom {PRINT_TERMS} terms: {list(reversed(sorted_corpus))[0:PRINT_TERMS]}")
     print("================================================")
     print()
@@ -474,7 +471,7 @@ if __name__ == '__main__':
     search_queries = ["machine learning", "cristina lopes", "machine learning", "ACM", "master of software engineering"]
     # search_queries = ["master of software engineering"]
     results = search_multiple(search_queries, from_file_token_map, docID_store,
-                              findex_file_objects, docID_hash, bolds_links_store)
+                              findex_file_objects, duplicate_docIDs, bolds_links_store)
     for query in results.keys():
         result = results[query][0]
         time_taken = results[query][1]
