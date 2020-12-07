@@ -342,7 +342,7 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref,
         union = set()  # [docID]
         # QUERY
         tokenized_query = ctoken.tokenize(query_phrase, trim_stopwords=False) # [query_term]
-        query_term_freqs = defaultdict(int) # {term:freqs}
+        unique_query_term_freqs = defaultdict(int) # {term:freqs}
         # QUERY TFIDF
         query_weighted_tfidf_dict = defaultdict(float)  # {term:float}
         query_normalized_weighted_tfidf_dict = defaultdict(float)  # {term:float}
@@ -350,14 +350,18 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref,
         # DCOUMENT TFIDF
         document_normalized_weighted_tf_dict = defaultdict(lambda: defaultdict(float))  # {docID:{term:float}}
         final_doc_scores = defaultdict(float)  # {docID:float}}
+        all_stopwords = False
         # FREQ'ING QUERY
-        for toke in tokenized_query:
-            query_term_freqs[toke] += 1
+        # if the query is extremely long, stop words are removed
 
+        if len(tokenized_query) > 3:
+            tokenized_query = [token for token in tokenized_query if token not in set(stopwords.words('english'))]
+        unique_keys = set(tokenized_query)
+        for toke in tokenized_query:
+            unique_query_term_freqs[toke] += 1
         # ACCESSING DOCID's AND POSITIONS
         # accounts for posting information stored in multiple files
-        for toke in tokenized_query:
-            # term weight in query
+        for toke in unique_keys:
             # posting list(s)
             try:
                 for file, seek in token_map_ref[toke].items():
@@ -366,33 +370,32 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref,
                         f.seek(seek_pos)  # sends cursor to position
                         posting = orjson.loads(f.readline().replace("'", "\"")) # {docID:[seek_positions]}
                         for docID in posting.keys():
-                            if docID in duplicate_docIDS and docID in term_docID_positions[toke]:
-                                print("saved you an EXACT MD5 duplicate!", {docID})
-                                pass
-                            else: # {datatype:[positions]}
-                                for pos in posting[docID]:
-                                    term_docID_positions[toke][docID].append(pos)
+                            # trim off duplicate pages
+                            if docID not in duplicate_docIDS and docID not in term_docID_positions[toke]:
+                                [term_docID_positions[toke][docID].append(pos) for pos in posting[docID]]
                                 union.add(docID)
             except KeyError:
-                # print("A token in query does not exist, skipping query.")
-                del query_term_freqs[toke]
+                # removing terms that do not exist in corpus
+                del unique_query_term_freqs[toke]
                 continue
+        file_time2 = time.perf_counter()
 
+        # print("filetime:", (file_time2-file_time1)*1000)
         # QUERY TFIDF VECTOR
-        for term in query_term_freqs.keys():
+        for term in unique_query_term_freqs.keys():
             # weighted term frequency
-            weighted_tf = 1 + math.log(query_term_freqs[term])
+            weighted_tf = 1 + math.log(unique_query_term_freqs[term])
             # weighted number of documents / number of documents containing term
             weighted_idf = math.log(len(docid_store_ref) / len(term_docID_positions[term]))
             query_tfidf = weighted_tf * weighted_idf
             query_weighted_tfidf_dict[term] = query_tfidf
             term_idf[term] = weighted_idf
-        # sqrt(sum(query_vector))
-        query_n_term = normalization_term(query_weighted_tfidf_dict.values())
+        query_n_term = normalization_term(query_weighted_tfidf_dict.values()) # sqrt(sum(query_vector))
         for term in query_weighted_tfidf_dict.keys():
             query_normalized_weighted_tfidf_dict[term] = query_weighted_tfidf_dict[term] / query_n_term
 
-        # search bolds in intersection
+
+        # BOLDS EXTRACTION
         bolds_docID = set()
         for term in [query for query in query_weighted_tfidf_dict.keys() if query not in set(stopwords.words('english'))]:
             try:
@@ -404,49 +407,56 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref,
         # boolan AND + bolds
         # boolean AND + bolds + iter(union each set of docIDs for term in reverse idf order)
         # still none? Nuclear option -> union with all docs containing term
-        doc_select_snap_start = time.perf_counter()
         datasets = []
+        MINIMUM_ITERS = 1000
+        MAXIMUM_ITERS = 2000
         try:
             searchdocs = set.intersection(
                 *[set(term_docID_positions[term].keys()) for term in term_docID_positions.keys()])
             datasets.append(f"boolean AND{len(searchdocs)}")
         except TypeError:
-            searchdocs = bolds_docID
-            datasets.append(f"union-bolds{len(searchdocs)}")
-        while len(searchdocs) < SEARCH_RESULTS:
-            searchdocs = set.union(*[searchdocs, bolds_docID])
-            datasets.append(f"union-bolds{len(searchdocs)}")
-            # start adding documents in sortedidf order
-            # SORT BY QUERY TERM IDF
-            counter = 0
-            if len(searchdocs) > SEARCH_RESULTS:
+            searchdocs = set()
+            pass
+        predicted_iterations = len(searchdocs) * len(query_normalized_weighted_tfidf_dict.keys())
+        while predicted_iterations < MINIMUM_ITERS:
+            if all_stopwords:
                 break
+            counter = 0
             for term, idf in sorted(term_idf.items(), key=lambda x: x[1], reverse=True):
                 searchdocs = set.union(*[searchdocs, [docID for docID in term_docID_positions[term]]])
-                datasets.append(f"union-termdocs{counter}-{len(searchdocs)}")
+                datasets.append(f"union-termdocs{counter}-{term}-{len(searchdocs)}")
                 counter += 1
-                if len(searchdocs) > SEARCH_RESULTS:
+                predicted_iterations = len(searchdocs)*len(query_normalized_weighted_tfidf_dict.keys())
+                if predicted_iterations > MINIMUM_ITERS:
                     break
-            if len(searchdocs) > SEARCH_RESULTS:
+            if predicted_iterations > MINIMUM_ITERS:
+                break
+            searchdocs = set.union(*[searchdocs, bolds_docID])
+            datasets.append(f"union-bolds{len(searchdocs)}")
+            predicted_iterations = len(searchdocs) * len(query_normalized_weighted_tfidf_dict.keys())
+            if predicted_iterations > MINIMUM_ITERS:
                 break
             searchdocs = set.union(*[searchdocs, union])
             datasets.append(f"union-union{len(searchdocs)}")
+            predicted_iterations = len(searchdocs) * len(query_normalized_weighted_tfidf_dict.keys())
             break
-        while len(searchdocs)*len(query_term_freqs.keys()) > 5000:
+        while predicted_iterations > MAXIMUM_ITERS:
             # do some filtering, thats alot of results.
             searchdocs = set.intersection(*[searchdocs, bolds_docID])
             datasets.append(f"intersect-bolds{len(searchdocs)}")
-            if len(searchdocs)*len(query_term_freqs.keys()) > 5000:
+            predicted_iterations = len(searchdocs) * len(query_normalized_weighted_tfidf_dict.keys())
+            if predicted_iterations < MAXIMUM_ITERS:
                 break
             searchdocs = set.intersection(*[searchdocs, union])
             datasets.append(f"intersect-union{len(searchdocs)}")
             break
+        datasets.append(f"iterations:{len(searchdocs) * len(query_normalized_weighted_tfidf_dict.keys())}")
 
         # DOCUMENT TF-IDF SCORING ---------------------------------
         # COMPUTE DOCUMENTS TF'S
         # term frequency in document, list of score values() for all terms
         for docID in searchdocs:
-            for term in query_term_freqs.keys():
+            for term in unique_query_term_freqs.keys():
                 # weighted document tf == 1+log(term frequency in document)
                 # document_normalized_weighted_tf_dict[docID].values() == "document vector" or term_scores
                 if len(term_docID_positions[term][docID]) == 0:
@@ -455,27 +465,31 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref,
                 else:
                     document_normalized_weighted_tf_dict[docID][term] =\
                     1 + math.log(len(term_docID_positions[term][docID]))
-            for term in query_term_freqs.keys():
+            for term in unique_query_term_freqs.keys():
                 # NORMALIZE DOCUMENT TF
                 n_term = normalization_term(document_normalized_weighted_tf_dict[docID].values())
                 document_normalized_weighted_tf_dict[docID][term] =\
                     document_normalized_weighted_tf_dict[docID][term] / n_term
+
         # COMPUTE FINAL TERM-DOCUMENT RELEVANCE SCORE-----------------------
         # sum(for all terms: query_term_score*document_normalized_weighted_tf_dict)
+        non_tfidf_weighting_factor = 1
         for docID in document_normalized_weighted_tf_dict.keys():
             sum_list = list()
             for term in document_normalized_weighted_tf_dict[docID].keys():
                 doc_score = query_normalized_weighted_tfidf_dict[term] * document_normalized_weighted_tf_dict[docID][term]
-                if doc_score == 0:
+                if doc_score == 0: # its an irrelevant document
                     continue
+                if len(document_normalized_weighted_tf_dict[docID].keys()) == 1:  # the query was a single word
+                    non_tfidf_weighting_factor = 10
                 if BOLDS_WEIGHTING and docID in bolds_docID:
-                    doc_score += 0 #0.001
+                    doc_score += 0.0001 * non_tfidf_weighting_factor
                     # print("we struck BOLD!")
                 if PAGERANK_WEIGHTING:
                     try:
                         page_rank = sorted_pagerank_ref[int(docID)][1]
                         if page_rank > 0.001:
-                            doc_score += page_rank*0
+                            doc_score += page_rank*non_tfidf_weighting_factor
                             pass
                     except IndexError:
                         pass
@@ -483,11 +497,9 @@ def search_multiple(search_queries_ref, token_map_ref, docid_store_ref,
             final_doc_scores[docid_store_ref[int(docID)]] = sum(sum_list)
 
         # SORT AND SLICE RESULTS ----------------------------
-        # print(f"{len(final_doc_scores)} results for this query.")
         search_results = sorted(final_doc_scores.items(), key=lambda x: x[1], reverse=True)[0:SEARCH_RESULTS]
-        # print()
         time_taken = time.perf_counter() - time_search_start
-        print(tokenized_query, "results", "\n", len(final_doc_scores), "datasets", datasets)
+        # print(tokenized_query, "results", "\n", len(final_doc_scores), "datasets", datasets)
         if union:
             ret_results[query_phrase] = (search_results, time_taken)
         else:
@@ -567,13 +579,10 @@ if __name__ == '__main__':
     # Search
     search_queries = ["ai club", "master of software engineering", "MOSFET", "Dingo ate me baby", "support document",
                       "browser", "the university of california irvine ai club workshop", "sourcer","lawks", "lawler",
-                      "breast cancer wisconsin", "computer science ", "informatics", "rwxrwxrwx", "laveman",
+                      "breast cancer wisconsin", "computer science", "informatics", "rwxrwxrwx", "laveman",
                       "language for distributed embedded systems", "a",
                       "krisberg org", "kovarik@mcmail.cis.mcmaster.ca", "cbcl", ]
-    # search_queries = ["master of software engineering", "language for distributed embedded systems","support document",
-    #                   "the university of california irvine ai club workshop",]
-    # search_queries = ["support document",]
-    # search_queries = ["computer science"]
+    search_queries = ["language for distributed embedded systems",]
     results = search_multiple(search_queries, from_file_token_map, docID_store,
                               findex_file_objects, duplicate_docIDs, bolds_links_store,
                               sorted_pagerank, bolds_terms_docIDs)
