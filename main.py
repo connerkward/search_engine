@@ -24,7 +24,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 Bard = loadbard.LoadBard()
 
 # FILE NAMES
-DATA_DIR = "C:\\Users\\Conner\\Desktop\\developer\\DEV"
+DATA_DIR = "DATA\\"
 # DATA_DIR = ""
 INDEX_DIR = "INDEX\\"
 INVERT_DIR = "INVERT\\"
