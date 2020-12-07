@@ -1,12 +1,13 @@
 TO OPERATE:
 
-First install the required packages and build the INDEX. Folders "INDEX" and "INVERT" must be created in project root prior to this.
+First install the required packages. Working index is inlcuded in files, however, to rebuild the index on a new set of files, folders "INDEX" and "INVERT" must be created in project root prior to this.
 
 MAC AND LINUX 
 (for Windows use approprite directory making command)
 ~~~
 mkdir INVERT
 mkdir INDEX
+mkdir DATA
 pip install requirements.txt
 python make_index.py
 ~~~
