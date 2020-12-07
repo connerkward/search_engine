@@ -1,9 +1,10 @@
 TO OPERATE:
 
-First install the required packages. Working index is inlcuded in files, however, to rebuild the index on a new set of files, folders "INDEX" and "INVERT" must be created in project root prior to this.
+First install the required packages. Working index is inlcuded in files, however, to rebuild the index on a new set of files, folders "INDEX", "INVERT", and "DATA" must be created in project root prior to this. Depending on OS, make sure the variable DATA_DIR points to the right folder. This program was run on Windows.
+
 
 MAC AND LINUX 
-(for Windows use approprite directory making command)
+(on Windows use approprite directory making command)
 ~~~
 mkdir INVERT
 mkdir INDEX
