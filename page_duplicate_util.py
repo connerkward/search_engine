@@ -11,7 +11,7 @@ def find_duplicates(docID_hash_dict):
     docID_of_duplicates = set()
     for docID in docID_hash_dict.keys():
         if docID_hash_dict[docID] in visited_hashes:
-            docID_of_duplicates.add(docID_hash_dict[docID])
+            docID_of_duplicates.add(docID)
         else:
             visited_hashes.add(docID_hash_dict[docID])
     return docID_of_duplicates

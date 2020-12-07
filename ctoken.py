@@ -10,7 +10,7 @@ TABLE2 = str.maketrans(replace_string, " "*len(replace_string))
 TABLE_NOSPACE = str.maketrans("", "", "-")
 stemmer = SnowballStemmer("english")
 STOPWORDS = set(stopwords.words('english'))
-NO_NUMERIC = True
+NO_NUMERIC = False
 
 
 def tokenize(line: str, trim_stopwords=False) -> list:
