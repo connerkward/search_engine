@@ -21,7 +21,7 @@ This will take a while, so grab a snack.
 
 After this is complete, you will be able to search for terms. 
 
-to search for term via the command line:
+to search for a term via the command line:
 ~~~
 python terminal_interface.py
 ~~~
@@ -29,7 +29,7 @@ You can also provide queries directly in the command, but results are slow due t
 ~~~
 python terminal_interface.py "your query" "your second query"
 ~~~
-or use the web interface
+or use the web interface, which is faster because it keeps the index file open.
 ~~~
 python web_interface.py
 ~~~
