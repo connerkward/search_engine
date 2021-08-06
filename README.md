@@ -1,4 +1,6 @@
-This is a "search engine" built in python that uses term frequency–inverse document frequency (TF-IDF), pagerank, duplicate removal hashing, ntlk tokenization with stopword removal, etc.
+# Search Engine in Python
+
+This is a "search engine" built in python that uses term frequency–inverse document frequency (TF-IDF) and pagerank to sort results. Indexes creation includes duplicate removal hashing, ntlk tokenization with stopword removal.
 
 TO OPERATE:
 
