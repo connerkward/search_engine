@@ -1,6 +1,8 @@
+This is a "search engine" built in python that uses term frequency–inverse document frequency (TF-IDF), pagerank, duplicate removal hashing, ntlk tokenization with stopword removal, etc.
+
 TO OPERATE:
 
-First install the required packages. Working index is inlcuded in files, however, to rebuild the index on a new set of files, folders "INDEX", "INVERT", and "DATA" must be created in project root prior to this. Depending on OS, make sure the variable DATA_DIR points to the right folder. This program was run on Windows.
+First install the required packages. Working index is inlcuded in files, however, to rebuild the index on a new set of files, folders "INDEX", "INVERT", and "DATA" must be created in project root prior to this. Depending on OS, make sure the variable DATA_DIR points to the right folder. This program was run on Windows. To build the index, inside the DATA folder place folders with website names and inside the website files. 
 
 
 MAC AND LINUX 
